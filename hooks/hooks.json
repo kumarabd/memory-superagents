@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'MEMORY SYSTEM ACTIVE. Invoke the claude-memory:memory-manager skill now. Load global preferences and workspace context before doing anything else.'",
+            "async": false
+          }
+        ]
+      }
+    ]
+  }
+}
