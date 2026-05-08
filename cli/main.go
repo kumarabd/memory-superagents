@@ -18,6 +18,8 @@ func main() {
 			cmd.StatsCmd(),
 			cmd.SearchCmd(),
 			cmd.ExportCmd(),
+			cmd.BackupCmd(),
+			cmd.RestoreCmd(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
