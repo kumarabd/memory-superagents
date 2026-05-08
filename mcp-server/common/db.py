@@ -11,6 +11,12 @@ _pool: asyncpg.Pool | None = None
 _ACTIVE_FILTER = "(m.metadata->>'status' IS NULL OR m.metadata->>'status' = 'active')"
 
 
+PROJECT_MATCH = """(
+            (m.session_id IS NULL AND m.metadata->>'project' = $1)
+            OR (m.session_id IS NOT NULL AND s.workspace_path = $1)
+        )"""
+
+
 async def _setup_codecs(conn: asyncpg.Connection) -> None:
     await conn.set_type_codec('jsonb', encoder=json.dumps, decoder=json.loads, schema='pg_catalog')
     await conn.set_type_codec('json', encoder=json.dumps, decoder=json.loads, schema='pg_catalog')
@@ -137,11 +143,8 @@ async def recent_memories(
             m.created_at
         FROM memory_events m
         LEFT JOIN conversation_sessions s ON m.session_id = s.id
-        WHERE (
-            (m.session_id IS NULL AND m.metadata->>'project' = $1)
-            OR (m.session_id IS NOT NULL AND s.workspace_path = $1)
-        )
-        {active_clause}
+        WHERE {PROJECT_MATCH}
+          {active_clause}
         ORDER BY m.created_at DESC
         LIMIT $2
         """,
@@ -168,10 +171,7 @@ async def get_decisions(
             m.created_at
         FROM memory_events m
         LEFT JOIN conversation_sessions s ON m.session_id = s.id
-        WHERE (
-            (m.session_id IS NULL AND m.metadata->>'project' = $1)
-            OR (m.session_id IS NOT NULL AND s.workspace_path = $1)
-        )
+        WHERE {PROJECT_MATCH}
           AND m.memory_type = 'decision'
           {active_clause}
         ORDER BY m.created_at DESC
@@ -200,10 +200,7 @@ async def get_project_context(
             m.created_at
         FROM memory_events m
         LEFT JOIN conversation_sessions s ON m.session_id = s.id
-        WHERE (
-            (m.session_id IS NULL AND m.metadata->>'project' = $1)
-            OR (m.session_id IS NOT NULL AND s.workspace_path = $1)
-        )
+        WHERE {PROJECT_MATCH}
           AND m.memory_type = 'project_context'
           {active_clause}
         ORDER BY m.created_at DESC
@@ -239,3 +236,45 @@ async def get_preferences_by_embedding(
         _vec(embedding), limit,
     )
     return [_row(r) for r in rows]
+
+
+async def project_memory_distribution(
+    project: str,
+    include_inactive: bool = False,
+) -> dict[str, Any]:
+    """Counts by memory_type for a workspace + total span of created_at."""
+    active_clause = "" if include_inactive else f"AND {_ACTIVE_FILTER}"
+    pool = _get_pool()
+    type_rows = await pool.fetch(
+        f"""
+        SELECT m.memory_type, COUNT(*)::int AS count
+        FROM memory_events m
+        LEFT JOIN conversation_sessions s ON m.session_id = s.id
+        WHERE {PROJECT_MATCH}
+          {active_clause}
+        GROUP BY m.memory_type
+        ORDER BY count DESC
+        """,
+        project,
+    )
+    agg = await pool.fetchrow(
+        f"""
+        SELECT
+            COUNT(*)::int AS total,
+            MIN(m.created_at) AS first_event_at,
+            MAX(m.created_at) AS last_event_at
+        FROM memory_events m
+        LEFT JOIN conversation_sessions s ON m.session_id = s.id
+        WHERE {PROJECT_MATCH}
+          {active_clause}
+        """,
+        project,
+    )
+    by_type = [{"memory_type": r["memory_type"], "count": r["count"]} for r in type_rows]
+    return {
+        "project": project,
+        "total": agg["total"] if agg else 0,
+        "first_event_at": agg["first_event_at"].isoformat() if agg and agg["first_event_at"] else None,
+        "last_event_at": agg["last_event_at"].isoformat() if agg and agg["last_event_at"] else None,
+        "by_type": by_type,
+    }

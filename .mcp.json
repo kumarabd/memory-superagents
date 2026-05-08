@@ -1,11 +1,8 @@
 {
   "memory": {
-    "command": "uv",
+    "command": "/bin/bash",
     "args": [
-      "--directory",
-      "${CLAUDE_PLUGIN_ROOT}/mcp-server",
-      "run",
-      "server.py"
+      "${CLAUDE_PLUGIN_ROOT}/mcp-server/run-mcp-server.sh"
     ],
     "env": {
       "DATABASE_URL": "${DATABASE_URL}",

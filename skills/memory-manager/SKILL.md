@@ -179,5 +179,9 @@ Also write individually any unresolved items:
 | `memory.get_decisions` | `project, limit, include_inactive` | Load project decisions |
 | `memory.get_project_context` | `project, limit, include_inactive` | Load project architecture/context |
 | `memory.recent` | `project, limit, include_inactive` | Recent active memories for a workspace |
+| `insights.project_distribution` | `project, include_inactive` | Workspace counts by memory type + date span (structure before viz or narrative) |
+| `insights.persist_synthesis` | `project, content, subject?, source_memory_ids?, importance?, confidence?` | Save a consolidated pattern as `learning` with `metadata.lineage` pointing at sources |
+
+**Insights vs core:** Prefer `insights.project_distribution` when you need aggregates or dashboards; persist cross-session summaries with `insights.persist_synthesis` (sets `created_from: derived` and lineage) instead of ad-hoc `memory.write` when the row is synthesized from explicit source ids.
 
 `filters` for `memory.search`: `{ memory_type?, scope?, project? }`

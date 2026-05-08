@@ -4,7 +4,7 @@ A persistent memory layer for Claude Code. Gives Claude the ability to remember 
 
 ## How it works
 
-Claude writes and retrieves typed memory events via six MCP tools. Every memory has a type, scope, importance, confidence, and optional project tag. Semantic search is powered by OpenAI embeddings (`text-embedding-ada-002`) stored in a `vector(1536)` column.
+The MCP server exposes **core** tools (`memory.*`) for capture and retrieval plus **insights** tools (`insights.*`) for aggregates and derived rows stored with lineage. Claude writes and retrieves typed memory events primarily via core tools. Every memory has a type, scope, importance, confidence, and optional project tag. Semantic search is powered by OpenAI embeddings (`text-embedding-ada-002`) stored in a `vector(1536)` column.
 
 At the start of each Claude Code session the memory-manager skill fires automatically via a `SessionStart` hook, loading two tracks of context:
 
@@ -20,7 +20,7 @@ claude-memory/
 ├── .claude-plugin/
 │   ├── plugin.json          # Claude plugin manifest
 │   └── marketplace.json     # Marketplace registration
-├── .mcp.json                # MCP server registration (uv run)
+├── .mcp.json                # MCP registration (bootstrap venv via run-mcp-server.sh)
 ├── docker-compose.yml       # PostgreSQL + pgvector
 ├── install.sh               # Guided setup script
 ├── hooks/
@@ -28,9 +28,9 @@ claude-memory/
 ├── migrations/
 │   └── 001_initial.sql      # Database schema
 ├── mcp-server/              # FastMCP Python server
-│   ├── db.py
-│   ├── embeddings.py
-│   ├── models.py
+│   ├── common/              # shared DB pool, embeddings, models
+│   ├── core/                # memory.* (capture / store / retrieve)
+│   ├── insights/            # insights.* (analyze / derive / viz-friendly stats)
 │   ├── server.py
 │   └── pyproject.toml
 ├── skills/
@@ -42,6 +42,8 @@ claude-memory/
 
 ## MCP Tools
 
+### Core (`memory.*`)
+
 | Tool | Purpose |
 |---|---|
 | `memory.search` | Semantic search with optional type/scope/project filters |
@@ -50,6 +52,13 @@ claude-memory/
 | `memory.get_decisions` | All active decisions for a workspace |
 | `memory.get_project_context` | Project context memories for a workspace |
 | `memory.get_preferences` | Semantic search over personal/global preferences |
+
+### Insights (`insights.*`)
+
+| Tool | Purpose |
+|---|---|
+| `insights.project_distribution` | Counts by memory type per workspace plus date span (for charts/tables) |
+| `insights.persist_synthesis` | Save a derived pattern as `learning` with `metadata.lineage.source_memory_ids` |
 
 ## Memory CLI
 
@@ -77,9 +86,12 @@ memory reindex      # re-embed after model change
 ### Prerequisites
 
 - Docker + Docker Compose
-- [uv](https://docs.astral.sh/uv/install/) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- **Python 3.11+** on `PATH` as `python3` (stdlib `venv` is enough — **no global `uv` required**)
 - Claude Code CLI
+- Go (for building the optional `memory` CLI via `install.sh`)
 - OpenAI API key
+
+The MCP server installs its own dependencies into `mcp-server/.venv/` the first time it starts (`run-mcp-server.sh`). Developers may still use [uv](https://docs.astral.sh/uv/) with `uv run server.py` if they prefer.
 
 ### Option A — Plugin install (recommended)
 
@@ -104,6 +116,17 @@ git clone https://github.com/your-org/claude-memory
 cd claude-memory
 OPENAI_API_KEY=sk-... ./install.sh
 ```
+
+To register the MCP server by hand (same as `install.sh` does), use the bootstrap script so the repo does not depend on global `uv`:
+
+```bash
+claude mcp add memory -s user \
+  -e DATABASE_URL="postgres://postgres:postgres@localhost:5432/claude_memory" \
+  -e OPENAI_API_KEY="sk-..." \
+  -- /bin/bash /path/to/claude-memory/mcp-server/run-mcp-server.sh
+```
+
+The first successful start may take a short while while `pip` fills `mcp-server/.venv/`.
 
 ### Verify
 

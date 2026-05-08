@@ -15,7 +15,8 @@ echo "============================"; echo
 # --- Prerequisites ---
 step "Checking prerequisites..."
 command -v docker  >/dev/null 2>&1 || error "docker is required. See https://docs.docker.com/get-docker/"
-command -v uv      >/dev/null 2>&1 || error "uv is required: curl -LsSf https://astral.sh/uv/install.sh | sh"
+command -v python3 >/dev/null 2>&1 || error "Python 3.11+ is required: https://www.python.org/downloads/"
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null || error "Python 3.11 or newer is required (found older python3)."
 command -v go      >/dev/null 2>&1 || error "go is required: https://go.dev/dl/"
 command -v claude  >/dev/null 2>&1 || error "claude CLI is required. Install Claude Code first."
 info "All prerequisites found."
@@ -55,9 +56,8 @@ claude mcp add memory \
   -s user \
   -e DATABASE_URL="$DATABASE_URL" \
   -e OPENAI_API_KEY="$OPENAI_API_KEY" \
-  -- uv \
-     --directory "$SCRIPT_DIR/mcp-server" \
-     run server.py
+  -- /bin/bash \
+     "$SCRIPT_DIR/mcp-server/run-mcp-server.sh"
 info "MCP server registered."
 
 # --- CLI ---
