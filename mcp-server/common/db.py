@@ -145,8 +145,8 @@ async def write_memory(
     row = await _get_pool().fetchrow(
         """
         INSERT INTO memory_events
-            (memory_type, subject, content, importance, confidence, scope, metadata, embedding)
-        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::vector)
+            (memory_type, subject, content, importance, confidence, scope, metadata, embedding, session_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::vector, $9::uuid)
         RETURNING id::text
         """,
         memory_type,
@@ -157,6 +157,7 @@ async def write_memory(
         scope,
         metadata or {},
         _vec(embedding),
+        _active_session_id,
     )
     return row["id"]
 
