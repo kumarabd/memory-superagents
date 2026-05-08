@@ -20,7 +20,12 @@ def _check_env() -> None:
 async def lifespan(app: FastMCP):
     _check_env()
     await db.init_pool()
+    await db.create_session(
+        session_id=os.environ.get("CLAUDE_CODE_SESSION_ID"),
+        workspace_path=os.getcwd(),
+    )
     yield
+    await db.close_session()
     await db.close_pool()
     await embeddings.close()
 
