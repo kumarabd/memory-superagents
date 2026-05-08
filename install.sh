@@ -16,6 +16,7 @@ echo "============================"; echo
 step "Checking prerequisites..."
 command -v docker  >/dev/null 2>&1 || error "docker is required. See https://docs.docker.com/get-docker/"
 command -v uv      >/dev/null 2>&1 || error "uv is required: curl -LsSf https://astral.sh/uv/install.sh | sh"
+command -v go      >/dev/null 2>&1 || error "go is required: https://go.dev/dl/"
 command -v claude  >/dev/null 2>&1 || error "claude CLI is required. Install Claude Code first."
 info "All prerequisites found."
 
@@ -60,9 +61,10 @@ claude mcp add memory \
 info "MCP server registered."
 
 # --- CLI ---
-step "Installing memory CLI..."
-uv tool install --editable "$SCRIPT_DIR/cli"
-info "memory CLI installed."
+step "Building memory CLI..."
+command -v go >/dev/null 2>&1 || error "go is required: https://go.dev/dl/"
+(cd "$SCRIPT_DIR/cli" && go build -o "$HOME/.local/bin/memory" .)
+info "memory CLI installed to ~/.local/bin/memory"
 
 # --- Done ---
 echo

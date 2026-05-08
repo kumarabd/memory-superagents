@@ -10,9 +10,12 @@ import (
 
 func main() {
 	app := &cli.App{
-		Name:  "memory",
-		Usage: "Claude Memory — operational control plane for your memory platform.",
+		Name:                 "memory",
+		Usage:                "Claude Memory — operational control plane for your memory platform.",
+		EnableBashCompletion: true,
 		Commands: []*cli.Command{
+			cmd.InstallCmd(),
+			cmd.UninstallCmd(),
 			cmd.DoctorCmd(),
 			cmd.StatusCmd(),
 			cmd.StatsCmd(),
@@ -23,6 +26,8 @@ func main() {
 			cmd.CompactCmd(),
 			cmd.ReindexCmd(),
 			cmd.MigrateCmd(),
+			cmd.ConfigCmd(),
+			cmd.ResetCmd(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
