@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -6,3 +7,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Go
+memory
+memory-test
+/tmp/memory-test
