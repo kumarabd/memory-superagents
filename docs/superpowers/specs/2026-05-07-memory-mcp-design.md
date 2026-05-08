@@ -149,7 +149,7 @@ Write a new memory event.
 1. Validate `type` against `MemoryType` enum (Pydantic rejects invalid values before DB call)
 2. Embed `content` via `embed()`
 3. Insert into `memory_events` with defaults: `importance=0.5`, `confidence=0.7`, `scope='personal'`
-4. Overrides from `metadata` (e.g. `{"importance": 0.9, "subject": "prefers dark mode"}`) are applied before insert
+4. Well-known keys (`importance`, `confidence`, `scope`, `subject`) are extracted from `metadata` and written to their dedicated columns; the remaining keys are stored in the `metadata` JSONB column as-is
 5. Returns the inserted row's `id`
 
 ---
