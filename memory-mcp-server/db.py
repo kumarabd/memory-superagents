@@ -115,8 +115,8 @@ async def recent_memories(project: str, limit: int) -> list[dict[str, Any]]:
             m.importance,
             m.created_at
         FROM memory_events m
-        JOIN conversation_sessions s ON m.session_id = s.id
-        WHERE s.workspace_path = $1
+        LEFT JOIN conversation_sessions s ON m.session_id = s.id
+        WHERE (m.session_id IS NULL OR s.workspace_path = $1)
         ORDER BY m.created_at DESC
         LIMIT $2
         """,
@@ -125,7 +125,7 @@ async def recent_memories(project: str, limit: int) -> list[dict[str, Any]]:
     return [_row(r) for r in rows]
 
 
-async def get_decisions(project: str) -> list[dict[str, Any]]:
+async def get_decisions(project: str, limit: int = 100) -> list[dict[str, Any]]:
     rows = await _get_pool().fetch(
         """
         SELECT
@@ -135,11 +135,13 @@ async def get_decisions(project: str) -> list[dict[str, Any]]:
             m.metadata,
             m.created_at
         FROM memory_events m
-        JOIN conversation_sessions s ON m.session_id = s.id
-        WHERE s.workspace_path = $1 AND m.memory_type = 'decision'
+        LEFT JOIN conversation_sessions s ON m.session_id = s.id
+        WHERE (m.session_id IS NULL OR s.workspace_path = $1)
+          AND m.memory_type = 'decision'
         ORDER BY m.created_at DESC
+        LIMIT $2
         """,
-        project,
+        project, limit,
     )
     return [_row(r) for r in rows]
 

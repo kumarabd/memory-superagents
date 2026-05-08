@@ -33,8 +33,9 @@ mcp = FastMCP("memory", lifespan=lifespan)
 async def memory_search(
     query: str,
     filters: SearchFilters | None = None,
+    limit: int = 10,
 ) -> list[dict[str, Any]]:
-    """Semantic search across all memory events. Returns top 10 by cosine similarity."""
+    """Semantic search across all memory events."""
     f = filters or SearchFilters()
     embedding = await embeddings.embed(query)
     return await db.search_memories(
@@ -42,6 +43,7 @@ async def memory_search(
         memory_type=f.memory_type.value if f.memory_type else None,
         scope=f.scope,
         project=f.project,
+        limit=max(1, min(limit, 200)),
     )
 
 
@@ -81,24 +83,29 @@ async def memory_recent(
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     """Fetch the most recent memory events for a project (workspace_path), newest first."""
-    return await db.recent_memories(project=project, limit=min(limit, 200))
+    return await db.recent_memories(project=project, limit=max(1, min(limit, 200)))
 
 
 @mcp.tool(name="memory.get_decisions")
 async def memory_get_decisions(
     project: str,
+    limit: int = 100,
 ) -> list[dict[str, Any]]:
-    """Fetch all decisions recorded for a project (workspace_path), newest first."""
-    return await db.get_decisions(project=project)
+    """Fetch decisions recorded for a project (workspace_path), newest first."""
+    return await db.get_decisions(project=project, limit=max(1, min(limit, 500)))
 
 
 @mcp.tool(name="memory.get_preferences")
 async def memory_get_preferences(
     topic: str,
+    limit: int = 10,
 ) -> list[dict[str, Any]]:
-    """Semantic search over preferences. Returns top 10 most relevant to the topic."""
+    """Semantic search over preferences, most relevant first."""
     embedding = await embeddings.embed(topic)
-    return await db.get_preferences_by_embedding(embedding=embedding)
+    return await db.get_preferences_by_embedding(
+        embedding=embedding,
+        limit=max(1, min(limit, 200)),
+    )
 
 
 if __name__ == "__main__":
