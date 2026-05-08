@@ -110,7 +110,7 @@ async def test_write_memory_stamps_active_session_id():
     sql = call_args[0][0]
     assert "session_id" in sql
     args = call_args[0][1:]
-    assert session_id in args
+    assert args[-1] == session_id
 
 
 async def test_write_memory_null_session_when_no_active_session():
@@ -125,5 +125,5 @@ async def test_write_memory_null_session_when_no_active_session():
         )
     call_args = pool.fetchrow.call_args
     args = call_args[0][1:]
-    # None should appear as the session_id arg (last positional after embedding)
-    assert None in args
+    # session_id is the last positional arg ($9); must be None when no active session
+    assert args[-1] is None
