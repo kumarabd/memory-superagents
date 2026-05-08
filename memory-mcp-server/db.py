@@ -6,6 +6,10 @@ import asyncpg
 
 _pool: asyncpg.Pool | None = None
 
+# Excludes superseded/stale memories from all read queries by default.
+# Applied as: AND (<_ACTIVE_FILTER>)
+_ACTIVE_FILTER = "(m.metadata->>'status' IS NULL OR m.metadata->>'status' = 'active')"
+
 
 async def init_pool() -> None:
     global _pool
@@ -48,9 +52,11 @@ async def search_memories(
     scope: str | None,
     project: str | None,
     limit: int = 10,
+    include_inactive: bool = False,
 ) -> list[dict[str, Any]]:
+    active_clause = "" if include_inactive else f"AND {_ACTIVE_FILTER}"
     rows = await _get_pool().fetch(
-        """
+        f"""
         SELECT
             m.id::text,
             m.memory_type,
@@ -71,6 +77,7 @@ async def search_memories(
             OR s.workspace_path = $4
             OR m.metadata->>'project' = $4
           )
+          {active_clause}
         ORDER BY m.embedding <=> $1::vector
         LIMIT $5
         """,
@@ -108,9 +115,14 @@ async def write_memory(
     return row["id"]
 
 
-async def recent_memories(project: str, limit: int) -> list[dict[str, Any]]:
+async def recent_memories(
+    project: str,
+    limit: int,
+    include_inactive: bool = False,
+) -> list[dict[str, Any]]:
+    active_clause = "" if include_inactive else f"AND {_ACTIVE_FILTER}"
     rows = await _get_pool().fetch(
-        """
+        f"""
         SELECT
             m.id::text,
             m.memory_type,
@@ -124,6 +136,7 @@ async def recent_memories(project: str, limit: int) -> list[dict[str, Any]]:
             (m.session_id IS NULL AND m.metadata->>'project' = $1)
             OR (m.session_id IS NOT NULL AND s.workspace_path = $1)
         )
+        {active_clause}
         ORDER BY m.created_at DESC
         LIMIT $2
         """,
@@ -132,13 +145,20 @@ async def recent_memories(project: str, limit: int) -> list[dict[str, Any]]:
     return [_row(r) for r in rows]
 
 
-async def get_decisions(project: str, limit: int = 100) -> list[dict[str, Any]]:
+async def get_decisions(
+    project: str,
+    limit: int = 100,
+    include_inactive: bool = False,
+) -> list[dict[str, Any]]:
+    active_clause = "" if include_inactive else f"AND {_ACTIVE_FILTER}"
     rows = await _get_pool().fetch(
-        """
+        f"""
         SELECT
             m.id::text,
             m.subject,
             m.content,
+            m.importance,
+            m.confidence,
             m.metadata,
             m.created_at
         FROM memory_events m
@@ -148,6 +168,7 @@ async def get_decisions(project: str, limit: int = 100) -> list[dict[str, Any]]:
             OR (m.session_id IS NOT NULL AND s.workspace_path = $1)
         )
           AND m.memory_type = 'decision'
+          {active_clause}
         ORDER BY m.created_at DESC
         LIMIT $2
         """,
@@ -156,14 +177,20 @@ async def get_decisions(project: str, limit: int = 100) -> list[dict[str, Any]]:
     return [_row(r) for r in rows]
 
 
-async def get_project_context(project: str, limit: int = 10) -> list[dict[str, Any]]:
+async def get_project_context(
+    project: str,
+    limit: int = 10,
+    include_inactive: bool = False,
+) -> list[dict[str, Any]]:
+    active_clause = "" if include_inactive else f"AND {_ACTIVE_FILTER}"
     rows = await _get_pool().fetch(
-        """
+        f"""
         SELECT
             m.id::text,
             m.subject,
             m.content,
             m.importance,
+            m.confidence,
             m.metadata,
             m.created_at
         FROM memory_events m
@@ -173,6 +200,7 @@ async def get_project_context(project: str, limit: int = 10) -> list[dict[str, A
             OR (m.session_id IS NOT NULL AND s.workspace_path = $1)
         )
           AND m.memory_type = 'project_context'
+          {active_clause}
         ORDER BY m.created_at DESC
         LIMIT $2
         """,
@@ -184,18 +212,22 @@ async def get_project_context(project: str, limit: int = 10) -> list[dict[str, A
 async def get_preferences_by_embedding(
     embedding: list[float],
     limit: int = 10,
+    include_inactive: bool = False,
 ) -> list[dict[str, Any]]:
+    active_clause = "" if include_inactive else f"AND {_ACTIVE_FILTER}"
     rows = await _get_pool().fetch(
-        """
+        f"""
         SELECT
             m.id::text,
             m.subject,
             m.content,
             m.importance,
+            m.confidence,
             m.created_at,
             1 - (m.embedding <=> $1::vector) AS similarity
         FROM memory_events m
         WHERE m.memory_type = 'preference'
+          {active_clause}
         ORDER BY m.embedding <=> $1::vector
         LIMIT $2
         """,

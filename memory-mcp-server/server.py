@@ -28,14 +28,19 @@ async def lifespan(app: FastMCP):
 
 mcp = FastMCP("memory", lifespan=lifespan)
 
+# Well-known metadata keys that map to dedicated columns.
+# Everything else stays in the metadata JSONB column.
+_COLUMN_KEYS = {"subject", "importance", "confidence", "scope"}
+
 
 @mcp.tool(name="memory.search")
 async def memory_search(
     query: str,
     filters: SearchFilters | None = None,
     limit: int = 10,
+    include_inactive: bool = False,
 ) -> list[dict[str, Any]]:
-    """Semantic search across all memory events."""
+    """Semantic search across memory events. Excludes superseded/stale by default."""
     f = filters or SearchFilters()
     embedding = await embeddings.embed(query)
     return await db.search_memories(
@@ -44,6 +49,7 @@ async def memory_search(
         scope=f.scope,
         project=f.project,
         limit=max(1, min(limit, 200)),
+        include_inactive=include_inactive,
     )
 
 
@@ -53,7 +59,15 @@ async def memory_write(
     content: str,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, str]:
-    """Write a new memory event. Well-known metadata keys: subject, importance, confidence, scope."""
+    """Write a memory event.
+
+    Column-level keys (extracted from metadata if present):
+      subject, importance, confidence, scope
+
+    Metadata keys stored verbatim in JSONB:
+      project, workspace_path, topic, tags, source,
+      session_id, created_from, status, and any others
+    """
     meta = dict(metadata or {})
     subject = meta.pop("subject", None)
     try:
@@ -62,6 +76,10 @@ async def memory_write(
     except (TypeError, ValueError) as e:
         raise ValueError(f"importance and confidence must be numeric: {e}") from e
     scope = str(meta.pop("scope", "personal"))
+
+    # Default status to "active" if not provided so filters work correctly.
+    if "status" not in meta:
+        meta["status"] = "active"
 
     embedding = await embeddings.embed(content)
     memory_id = await db.write_memory(
@@ -81,30 +99,27 @@ async def memory_write(
 async def memory_recent(
     project: str,
     limit: int = 20,
+    include_inactive: bool = False,
 ) -> list[dict[str, Any]]:
-    """Fetch the most recent memory events for a project (workspace_path), newest first."""
-    return await db.recent_memories(project=project, limit=max(1, min(limit, 200)))
+    """Fetch the most recent active memory events for a project, newest first."""
+    return await db.recent_memories(
+        project=project,
+        limit=max(1, min(limit, 200)),
+        include_inactive=include_inactive,
+    )
 
 
 @mcp.tool(name="memory.get_decisions")
 async def memory_get_decisions(
     project: str,
     limit: int = 100,
+    include_inactive: bool = False,
 ) -> list[dict[str, Any]]:
-    """Fetch decisions recorded for a project (workspace_path), newest first."""
-    return await db.get_decisions(project=project, limit=max(1, min(limit, 500)))
-
-
-@mcp.tool(name="memory.get_preferences")
-async def memory_get_preferences(
-    topic: str,
-    limit: int = 10,
-) -> list[dict[str, Any]]:
-    """Semantic search over preferences, most relevant first."""
-    embedding = await embeddings.embed(topic)
-    return await db.get_preferences_by_embedding(
-        embedding=embedding,
-        limit=max(1, min(limit, 200)),
+    """Fetch active decisions for a project (workspace_path), newest first."""
+    return await db.get_decisions(
+        project=project,
+        limit=max(1, min(limit, 500)),
+        include_inactive=include_inactive,
     )
 
 
@@ -112,9 +127,29 @@ async def memory_get_preferences(
 async def memory_get_project_context(
     project: str,
     limit: int = 10,
+    include_inactive: bool = False,
 ) -> list[dict[str, Any]]:
-    """Fetch project_context memories for a workspace (workspace_path), newest first."""
-    return await db.get_project_context(project=project, limit=max(1, min(limit, 50)))
+    """Fetch project_context memories for a workspace, newest first."""
+    return await db.get_project_context(
+        project=project,
+        limit=max(1, min(limit, 50)),
+        include_inactive=include_inactive,
+    )
+
+
+@mcp.tool(name="memory.get_preferences")
+async def memory_get_preferences(
+    topic: str,
+    limit: int = 10,
+    include_inactive: bool = False,
+) -> list[dict[str, Any]]:
+    """Semantic search over active preferences, most relevant first."""
+    embedding = await embeddings.embed(topic)
+    return await db.get_preferences_by_embedding(
+        embedding=embedding,
+        limit=max(1, min(limit, 200)),
+        include_inactive=include_inactive,
+    )
 
 
 if __name__ == "__main__":
