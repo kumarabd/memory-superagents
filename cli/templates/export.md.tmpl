@@ -1,0 +1,15 @@
+# Memory Export
+
+_Generated {{.GeneratedAt}} — {{.Total}} memories_
+
+---
+{{range $type, $memories := .ByType}}
+## {{title $type}} ({{len $memories}})
+{{range $memories}}
+### {{or .Subject "(no subject)"}}
+{{.Content}}
+
+_scope: {{.Scope}} | importance: {{.Importance}} | {{slice .CreatedAt 0 10}}_
+
+---
+{{end}}{{end}}

@@ -17,6 +17,7 @@ func main() {
 			cmd.StatusCmd(),
 			cmd.StatsCmd(),
 			cmd.SearchCmd(),
+			cmd.ExportCmd(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {

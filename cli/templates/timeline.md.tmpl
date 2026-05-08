@@ -1,0 +1,9 @@
+# Memory Timeline
+
+_Generated {{.GeneratedAt}}_
+
+---
+{{range $month, $entries := .Months}}
+## {{$month}}
+{{range $entries}}- {{truncate .Content 120}}
+{{end}}{{end}}
