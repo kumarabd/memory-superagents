@@ -66,7 +66,11 @@ async def search_memories(
         LEFT JOIN conversation_sessions s ON m.session_id = s.id
         WHERE ($2::text IS NULL OR m.memory_type = $2)
           AND ($3::text IS NULL OR m.scope = $3)
-          AND ($4::text IS NULL OR s.workspace_path = $4)
+          AND (
+            $4::text IS NULL
+            OR s.workspace_path = $4
+            OR m.metadata->>'project' = $4
+          )
         ORDER BY m.embedding <=> $1::vector
         LIMIT $5
         """,
@@ -116,7 +120,10 @@ async def recent_memories(project: str, limit: int) -> list[dict[str, Any]]:
             m.created_at
         FROM memory_events m
         LEFT JOIN conversation_sessions s ON m.session_id = s.id
-        WHERE (m.session_id IS NULL OR s.workspace_path = $1)
+        WHERE (
+            (m.session_id IS NULL AND m.metadata->>'project' = $1)
+            OR (m.session_id IS NOT NULL AND s.workspace_path = $1)
+        )
         ORDER BY m.created_at DESC
         LIMIT $2
         """,
@@ -136,8 +143,36 @@ async def get_decisions(project: str, limit: int = 100) -> list[dict[str, Any]]:
             m.created_at
         FROM memory_events m
         LEFT JOIN conversation_sessions s ON m.session_id = s.id
-        WHERE (m.session_id IS NULL OR s.workspace_path = $1)
+        WHERE (
+            (m.session_id IS NULL AND m.metadata->>'project' = $1)
+            OR (m.session_id IS NOT NULL AND s.workspace_path = $1)
+        )
           AND m.memory_type = 'decision'
+        ORDER BY m.created_at DESC
+        LIMIT $2
+        """,
+        project, limit,
+    )
+    return [_row(r) for r in rows]
+
+
+async def get_project_context(project: str, limit: int = 10) -> list[dict[str, Any]]:
+    rows = await _get_pool().fetch(
+        """
+        SELECT
+            m.id::text,
+            m.subject,
+            m.content,
+            m.importance,
+            m.metadata,
+            m.created_at
+        FROM memory_events m
+        LEFT JOIN conversation_sessions s ON m.session_id = s.id
+        WHERE (
+            (m.session_id IS NULL AND m.metadata->>'project' = $1)
+            OR (m.session_id IS NOT NULL AND s.workspace_path = $1)
+        )
+          AND m.memory_type = 'project_context'
         ORDER BY m.created_at DESC
         LIMIT $2
         """,

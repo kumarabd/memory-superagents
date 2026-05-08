@@ -108,5 +108,14 @@ async def memory_get_preferences(
     )
 
 
+@mcp.tool(name="memory.get_project_context")
+async def memory_get_project_context(
+    project: str,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """Fetch project_context memories for a workspace (workspace_path), newest first."""
+    return await db.get_project_context(project=project, limit=max(1, min(limit, 50)))
+
+
 if __name__ == "__main__":
     mcp.run()
