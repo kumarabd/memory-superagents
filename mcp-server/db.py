@@ -11,12 +11,17 @@ _pool: asyncpg.Pool | None = None
 _ACTIVE_FILTER = "(m.metadata->>'status' IS NULL OR m.metadata->>'status' = 'active')"
 
 
+async def _setup_codecs(conn: asyncpg.Connection) -> None:
+    await conn.set_type_codec('jsonb', encoder=json.dumps, decoder=json.loads, schema='pg_catalog')
+    await conn.set_type_codec('json', encoder=json.dumps, decoder=json.loads, schema='pg_catalog')
+
+
 async def init_pool() -> None:
     global _pool
     url = os.environ.get("DATABASE_URL")
     if not url:
         raise RuntimeError("DATABASE_URL environment variable is required")
-    _pool = await asyncpg.create_pool(url, min_size=1, max_size=5)
+    _pool = await asyncpg.create_pool(url, min_size=1, max_size=5, init=_setup_codecs)
 
 
 async def close_pool() -> None:
@@ -109,7 +114,7 @@ async def write_memory(
         importance,
         confidence,
         scope,
-        json.dumps(metadata or {}),
+        metadata or {},
         _vec(embedding),
     )
     return row["id"]
