@@ -22,6 +22,12 @@ async def close_pool() -> None:
         _pool = None
 
 
+def _get_pool() -> asyncpg.Pool:
+    if _pool is None:
+        raise RuntimeError("Database pool is not initialised — call init_pool() first")
+    return _pool
+
+
 def _vec(embedding: list[float]) -> str:
     return "[" + ",".join(str(x) for x in embedding) + "]"
 
@@ -43,7 +49,7 @@ async def search_memories(
     project: str | None,
     limit: int = 10,
 ) -> list[dict[str, Any]]:
-    rows = await _pool.fetch(
+    rows = await _get_pool().fetch(
         """
         SELECT
             m.id::text,
@@ -77,9 +83,9 @@ async def write_memory(
     importance: float = 0.5,
     confidence: float = 0.7,
     scope: str = "personal",
-    metadata: dict | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> str:
-    row = await _pool.fetchrow(
+    row = await _get_pool().fetchrow(
         """
         INSERT INTO memory_events
             (memory_type, subject, content, importance, confidence, scope, metadata, embedding)
@@ -99,7 +105,7 @@ async def write_memory(
 
 
 async def recent_memories(project: str, limit: int) -> list[dict[str, Any]]:
-    rows = await _pool.fetch(
+    rows = await _get_pool().fetch(
         """
         SELECT
             m.id::text,
@@ -120,7 +126,7 @@ async def recent_memories(project: str, limit: int) -> list[dict[str, Any]]:
 
 
 async def get_decisions(project: str) -> list[dict[str, Any]]:
-    rows = await _pool.fetch(
+    rows = await _get_pool().fetch(
         """
         SELECT
             m.id::text,
@@ -142,7 +148,7 @@ async def get_preferences_by_embedding(
     embedding: list[float],
     limit: int = 10,
 ) -> list[dict[str, Any]]:
-    rows = await _pool.fetch(
+    rows = await _get_pool().fetch(
         """
         SELECT
             m.id::text,
