@@ -20,6 +20,9 @@ func main() {
 			cmd.ExportCmd(),
 			cmd.BackupCmd(),
 			cmd.RestoreCmd(),
+			cmd.CompactCmd(),
+			cmd.ReindexCmd(),
+			cmd.MigrateCmd(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
