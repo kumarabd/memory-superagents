@@ -16,6 +16,7 @@ func main() {
 			cmd.DoctorCmd(),
 			cmd.StatusCmd(),
 			cmd.StatsCmd(),
+			cmd.SearchCmd(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
