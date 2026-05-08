@@ -14,6 +14,8 @@ func main() {
 		Usage: "Claude Memory — operational control plane for your memory platform.",
 		Commands: []*cli.Command{
 			cmd.DoctorCmd(),
+			cmd.StatusCmd(),
+			cmd.StatsCmd(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
