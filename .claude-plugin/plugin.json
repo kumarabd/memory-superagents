@@ -1,0 +1,13 @@
+{
+  "name": "claude-memory",
+  "description": "Persistent memory layer for Claude Code — remembers preferences, decisions, and context across sessions using PostgreSQL + pgvector",
+  "version": "0.1.0",
+  "author": {
+    "name": "Abishek Kumar",
+    "email": "abishekkumar92@gmail.com"
+  },
+  "homepage": "https://github.com/your-org/claude-memory",
+  "repository": "https://github.com/your-org/claude-memory",
+  "license": "MIT",
+  "keywords": ["memory", "persistence", "context", "agent", "pgvector"]
+}
