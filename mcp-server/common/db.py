@@ -11,6 +11,41 @@ _pool: asyncpg.Pool | None = None
 _ACTIVE_FILTER = "(m.metadata->>'status' IS NULL OR m.metadata->>'status' = 'active')"
 
 
+_active_session_id: str | None = None
+
+
+async def create_session(session_id: str | None, workspace_path: str) -> None:
+    global _active_session_id
+    if not session_id:
+        return
+    await _get_pool().execute(
+        """
+        INSERT INTO conversation_sessions (id, workspace_path, agent_name)
+        VALUES ($1::uuid, $2, $3)
+        ON CONFLICT (id) DO NOTHING
+        """,
+        session_id,
+        workspace_path,
+        "claude-code",
+    )
+    _active_session_id = session_id
+
+
+async def close_session() -> None:
+    global _active_session_id
+    if not _active_session_id:
+        return
+    await _get_pool().execute(
+        """
+        UPDATE conversation_sessions
+        SET ended_at = now()
+        WHERE id = $1::uuid
+        """,
+        _active_session_id,
+    )
+    _active_session_id = None
+
+
 PROJECT_MATCH = """(
             (m.session_id IS NULL AND m.metadata->>'project' = $1)
             OR (m.session_id IS NOT NULL AND s.workspace_path = $1)
