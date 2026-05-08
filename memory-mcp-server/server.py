@@ -54,8 +54,11 @@ async def memory_write(
     """Write a new memory event. Well-known metadata keys: subject, importance, confidence, scope."""
     meta = dict(metadata or {})
     subject = meta.pop("subject", None)
-    importance = float(meta.pop("importance", 0.5))
-    confidence = float(meta.pop("confidence", 0.7))
+    try:
+        importance = float(meta.pop("importance", 0.5))
+        confidence = float(meta.pop("confidence", 0.7))
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"importance and confidence must be numeric: {e}") from e
     scope = str(meta.pop("scope", "personal"))
 
     embedding = await embeddings.embed(content)
@@ -78,7 +81,7 @@ async def memory_recent(
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     """Fetch the most recent memory events for a project (workspace_path), newest first."""
-    return await db.recent_memories(project=project, limit=limit)
+    return await db.recent_memories(project=project, limit=min(limit, 200))
 
 
 @mcp.tool(name="memory.get_decisions")
