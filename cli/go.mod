@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/fatih/color v1.19.0
+	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/jedib0t/go-pretty/v6 v6.7.10
 	github.com/sashabaranov/go-openai v1.41.2

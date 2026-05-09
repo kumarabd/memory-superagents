@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import uuid
 from typing import Any
 
 import asyncpg
@@ -17,14 +18,17 @@ _active_session_id: str | None = None
 
 async def create_session(session_id: str | None, workspace_path: str) -> None:
     global _active_session_id
+    # Claude Code does not reliably provide a stable session id to stdio MCP servers.
+    # We still create a DB session row so memory events can be stamped consistently
+    # for the lifetime of this MCP server process.
     if not session_id:
+        session_id = str(uuid.uuid4())
         print(
-            "ERROR: create_session called without a session_id — "
+            "WARN: create_session called without a session_id — "
             "CLAUDE_CODE_SESSION_ID is not set in the MCP server environment. "
-            "No session row will be created.",
+            f"Generated session id: {session_id}",
             file=sys.stderr,
         )
-        return
     await _get_pool().execute(
         """
         INSERT INTO conversation_sessions (id, workspace_path, agent_name)

@@ -6,8 +6,21 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'MEMORY SYSTEM ACTIVE. Invoke the claude-memory:memory-manager skill now. Load global preferences and workspace context before doing anything else.'",
+            "command": "memory hook session-start",
             "async": false
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "memory hook session-end",
+            "async": true,
+            "timeout": 30
           }
         ]
       }

@@ -16,6 +16,7 @@ func main() {
 		Commands: []*cli.Command{
 			cmd.InstallCmd(),
 			cmd.UninstallCmd(),
+			cmd.HooksCmd(),
 			cmd.DoctorCmd(),
 			cmd.StatusCmd(),
 			cmd.StatsCmd(),

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "claude-memory",
   "description": "Persistent memory layer for Claude Code — remembers preferences, decisions, and context across sessions using PostgreSQL + pgvector",
   "version": "0.1.0",
@@ -9,5 +10,6 @@
   "homepage": "https://github.com/kumarabd/memory-superagents",
   "repository": "https://github.com/kumarabd/memory-superagents",
   "license": "MIT",
-  "keywords": ["memory", "persistence", "context", "agent", "pgvector"]
+  "keywords": ["memory", "persistence", "context", "agent", "pgvector"],
+  "skills": "./skills/"
 }

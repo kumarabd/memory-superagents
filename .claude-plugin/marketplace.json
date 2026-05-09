@@ -9,10 +9,7 @@
       "name": "claude-memory",
       "description": "Persistent memory layer for Claude Code",
       "version": "0.1.0",
-      "source": {
-        "source": "github",
-        "repo": "kumarabd/memory-superagents"
-      },
+      "source": "./",
       "author": {
         "name": "Abishek Kumar",
         "email": "abishekkumar92@gmail.com"
