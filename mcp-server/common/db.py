@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from typing import Any
 
 import asyncpg
@@ -17,6 +18,12 @@ _active_session_id: str | None = None
 async def create_session(session_id: str | None, workspace_path: str) -> None:
     global _active_session_id
     if not session_id:
+        print(
+            "ERROR: create_session called without a session_id — "
+            "CLAUDE_CODE_SESSION_ID is not set in the MCP server environment. "
+            "No session row will be created.",
+            file=sys.stderr,
+        )
         return
     await _get_pool().execute(
         """
@@ -31,17 +38,18 @@ async def create_session(session_id: str | None, workspace_path: str) -> None:
     _active_session_id = session_id
 
 
-async def close_session() -> None:
+async def close_session(summary: str | None = None) -> None:
     global _active_session_id
     if not _active_session_id:
         return
     await _get_pool().execute(
         """
         UPDATE conversation_sessions
-        SET ended_at = now()
+        SET ended_at = now(), summary = COALESCE($2, summary)
         WHERE id = $1::uuid
         """,
         _active_session_id,
+        summary,
     )
     _active_session_id = None
 

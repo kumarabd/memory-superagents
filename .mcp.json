@@ -6,7 +6,8 @@
     ],
     "env": {
       "DATABASE_URL": "${DATABASE_URL}",
-      "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+      "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+      "CLAUDE_CODE_SESSION_ID": "${CLAUDE_CODE_SESSION_ID}"
     }
   }
 }

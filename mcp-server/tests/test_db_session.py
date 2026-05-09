@@ -50,12 +50,15 @@ async def test_create_session_inserts_row():
     assert "claude-code" in args
 
 
-async def test_create_session_skips_when_no_session_id():
+async def test_create_session_prints_error_and_skips_when_no_session_id(capsys):
     pool = _make_pool()
     with patch.object(db, "_pool", pool):
         await db.create_session(session_id=None, workspace_path="/tmp/project")
     pool.execute.assert_not_awaited()
     assert db._active_session_id is None
+    captured = capsys.readouterr()
+    assert "ERROR" in captured.err
+    assert "CLAUDE_CODE_SESSION_ID" in captured.err
 
 
 # --- close_session ---

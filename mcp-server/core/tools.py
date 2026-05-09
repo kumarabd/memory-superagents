@@ -107,6 +107,18 @@ def register_core_tools(mcp: FastMCP) -> None:
             include_inactive=include_inactive,
         )
 
+    @mcp.tool(name="memory.close_session")
+    async def memory_close_session(summary: str) -> dict[str, str]:
+        """Persist a session summary and mark the session ended.
+
+        Call this once at the end of every session with a concise summary of
+        what was discussed, decisions made, problems solved, and next steps.
+        The text is stored in conversation_sessions.summary and linked to all
+        memory_events written during this session.
+        """
+        await db.close_session(summary=summary)
+        return {"status": "ok"}
+
     @mcp.tool(name="memory.get_preferences")
     async def memory_get_preferences(
         topic: str,
