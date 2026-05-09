@@ -6,8 +6,8 @@
     "name": "Abishek Kumar",
     "email": "abishekkumar92@gmail.com"
   },
-  "homepage": "https://github.com/your-org/claude-memory",
-  "repository": "https://github.com/your-org/claude-memory",
+  "homepage": "https://github.com/kumarabd/memory-superagents",
+  "repository": "https://github.com/kumarabd/memory-superagents",
   "license": "MIT",
   "keywords": ["memory", "persistence", "context", "agent", "pgvector"]
 }
