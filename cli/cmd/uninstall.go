@@ -18,7 +18,7 @@ func UninstallCmd() *cli.Command {
 		},
 		Action: func(c *cli.Context) error {
 			if !c.Bool("yes") {
-				output.Warn("This will unregister the MCP server from Claude Code.")
+				output.Warn("This will remove legacy user-scope MCP registration (claude mcp remove memory -s user), if present.")
 				if !c.Bool("keep-data") {
 					output.Warn("The PostgreSQL container and all data will also be removed.")
 				}
@@ -31,9 +31,9 @@ func UninstallCmd() *cli.Command {
 				}
 			}
 			if out, err := exec.Command("claude", "mcp", "remove", "memory", "-s", "user").CombinedOutput(); err != nil {
-				output.Warn("Could not unregister MCP: " + string(out))
+				output.Warn("No user-scope memory MCP to remove (or claude CLI failed): " + string(out))
 			} else {
-				output.OK("MCP server unregistered from Claude Code.")
+				output.OK("Removed user-scope memory MCP registration (plugin MCP is unchanged).")
 			}
 			if !c.Bool("keep-data") {
 				exec.Command("docker", "compose", "down", "-v").Run()

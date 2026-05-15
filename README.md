@@ -1,12 +1,18 @@
 # claude-memory
 
+**Repository:** [https://github.com/kumarabd/memory-superagents](https://github.com/kumarabd/memory-superagents)
+
 A persistent memory layer for Claude Code. Gives Claude the ability to remember preferences, decisions, problems, solutions, and context across sessions and workspaces — using PostgreSQL with pgvector for semantic search.
 
 ## How it works
 
 The MCP server exposes **core** tools (`memory.*`) for capture and retrieval plus **insights** tools (`insights.*`) for aggregates and derived rows stored with lineage. Claude writes and retrieves typed memory events primarily via core tools. Every memory has a type, scope, importance, confidence, and optional project tag. Semantic search is powered by OpenAI embeddings (`text-embedding-ada-002`) stored in a `vector(1536)` column.
 
-At the start of each Claude Code session the memory-manager skill fires automatically via a `SessionStart` hook, loading two tracks of context:
+**Recommended setup:** install **claude-memory** as a Claude Code plugin (this repo: `.claude-plugin/` + `hooks/` + `skills/` + **`.mcp.json`** for MCP). Then run **`./install.sh`** once from the plugin root: it starts Postgres and builds **`cli/memory`** (hooks use **`${CLAUDE_PLUGIN_ROOT}/hooks/memory-hook.sh`**, which prefers **`cli/memory`**). It does **not** run **`claude mcp add`** or edit user MCP config under **`~/.claude`**. Persist **`DATABASE_URL`** in your shell so SessionStart hooks and the MCP process match.
+
+At the start of each Claude Code session the **SessionStart** hook runs **`memory hook session-start`** (via the wrapper above), which (1) exports session metadata into `CLAUDE_ENV_FILE` when present, and (2) when **`DATABASE_URL`** is set, performs the same **first-touch materialization** as MCP **`notebook.load`** for the session workspace path (`cwd` from the hook payload, or **`CLAUDE_PROJECT_DIR`** if `cwd` is empty): ensures a row exists in **`agentlab_notebook`** so `SELECT * FROM agentlab_notebook` and subsequent **`notebook.load`** calls see that workspace without waiting for an agent tool call.
+
+The memory-manager skill still applies on top of that hook-driven setup:
 
 - **Track A — Global:** preferences and personal facts that apply across all workspaces
 - **Track B — Project:** decisions, context, recent events for the current workspace
@@ -24,9 +30,11 @@ claude-memory/
 ├── docker-compose.yml       # PostgreSQL + pgvector
 ├── install.sh               # Guided setup script
 ├── hooks/
-│   └── hooks.json           # SessionStart hook
+│   ├── hooks.json           # SessionStart / SessionEnd → memory-hook.sh
+│   └── memory-hook.sh       # Prefers ${CLAUDE_PLUGIN_ROOT}/cli/memory, then PATH
 ├── migrations/
-│   └── 001_initial.sql      # Database schema
+│   ├── 001_initial.sql
+│   └── 002_agentlab_notebook.sql   # AgentLab notebook table
 ├── mcp-server/              # FastMCP Python server
 │   ├── common/              # shared DB pool, embeddings, models
 │   ├── core/                # memory.* (capture / store / retrieve)
@@ -41,6 +49,29 @@ claude-memory/
 ```
 
 ## MCP Tools
+
+### AgentLab notebook (`notebook.*`)
+
+Structured workspace memory for **AgentLab** (`superagents`): one JSON payload per workspace (absolute path as `project`). Backed by table **`agentlab_notebook`**. Apply migrations with **`memory migrate`** after pulling (adds `002_agentlab_notebook.sql`).
+
+| Tool | Purpose |
+|------|---------|
+| `notebook.load` | Return `{ workspace_key, version, updated_at, notebook }` for the workspace. **First call** inserts a default row (so `SELECT * FROM agentlab_notebook` shows your workspace after one load). |
+| `notebook.patch` | Replace any provided top-level notebook keys (`term_cache`, `findings`, `preferences`, …); optional `expected_version` for optimistic locking |
+
+**`agentlab_notebook` lives only in this DB** (the one in `DATABASE_URL` / docker-compose `claude_memory`, typically port **5432**). It is **not** on AgentLab’s hydrate DB (**5433** / `agentlab_environment`). If you `psql` the wrong server, the table will be missing or always empty.
+
+**No rows after setup?**
+
+1. Run **`memory migrate`** so `002_agentlab_notebook.sql` is applied (`\dt agentlab_notebook` in `claude_memory`).
+2. Confirm the memory MCP **`DATABASE_URL`** matches the DB you are inspecting.
+3. In Claude, call **`notebook.load`** once with **`project`** = the **exact absolute path** of the workspace (same string you will use in `notebook.patch`). Then re-query:
+
+   ```bash
+   psql "$DATABASE_URL" -c "SELECT workspace_key, version FROM agentlab_notebook;"
+   ```
+
+4. If `notebook.load` still returns `version: 0` and no `_proxy` error, the MCP process may not have `DATABASE_URL` set (confirm env in Claude’s **MCP / plugin** settings and in your shell profile).
 
 ### Core (`memory.*`)
 
@@ -87,46 +118,61 @@ memory reindex      # re-embed after model change
 
 - Docker + Docker Compose
 - **Python 3.11+** on `PATH` as `python3` (stdlib `venv` is enough — **no global `uv` required**)
-- Claude Code CLI
+- Claude Code (the **claude-memory** plugin supplies MCP via **`.mcp.json`** — do not run `claude mcp add` for memory unless you intentionally want a duplicate user-scope entry under `~/.claude`)
 - Go (for building the optional `memory` CLI via `install.sh`)
 - OpenAI API key
 
 The MCP server installs its own dependencies into `mcp-server/.venv/` the first time it starts (`run-mcp-server.sh`). Developers may still use [uv](https://docs.astral.sh/uv/) with `uv run server.py` if they prefer.
 
-### Option A — Plugin install (recommended)
+### 1 — Install the plugin from GitHub (recommended)
 
-```bash
-# Add this repo as a local marketplace
-claude plugin marketplace add /path/to/claude-memory
+Register the marketplace from the public repo, then install the **`claude-memory`** plugin (MCP via **`.mcp.json`**, hooks, skills). See [Claude Code plugins](https://code.claude.com/docs/en/discover-plugins).
 
-# Install the plugin
-claude plugin install claude-memory@claude-memory
+**In Claude Code** (slash commands):
+
+```text
+/plugin marketplace add https://github.com/kumarabd/memory-superagents.git
+/plugin install claude-memory@claude-memory
+/reload-plugins
 ```
 
-Then run the guided setup:
+**From a terminal** ([plugins CLI](https://code.claude.com/docs/en/plugins-reference)):
 
 ```bash
+claude plugin marketplace add https://github.com/kumarabd/memory-superagents.git
+claude plugin install claude-memory@claude-memory --scope user
+```
+
+The marketplace **`name`** in [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) is **`claude-memory`**; the plugin id is **`claude-memory`**, so the install selector is **`claude-memory@claude-memory`**.
+
+### 2 — Data plane: Postgres + `memory` CLI
+
+**`install.sh`** is not run by the plugin installer. Clone the same repo on disk (for **`docker-compose.yml`**, migrations, and **`go build`**) and run the script once:
+
+```bash
+git clone https://github.com/kumarabd/memory-superagents.git
+cd memory-superagents
 OPENAI_API_KEY=sk-... ./install.sh
 ```
 
-### Option B — Manual install
+That starts Postgres, builds **`cli/memory`** under the clone (and copies it to **`~/.local/bin/memory`**). When the plugin is loaded from Claude’s cache, **`hooks/memory-hook.sh`** still finds the CLI via **`PATH`** if the cache tree does not yet contain **`cli/memory`**.
+
+Ensure **`~/.local/bin`** is on your **`PATH`** for terminal use of **`memory`**.
+
+### Alternative — Local plugin from a clone
+
+If you want **`${CLAUDE_PLUGIN_ROOT}/cli/memory`** to be the binary the hooks use (no reliance on **`PATH`**), install the plugin from the clone directory instead of only from GitHub cache:
 
 ```bash
-git clone https://github.com/your-org/claude-memory
-cd claude-memory
-OPENAI_API_KEY=sk-... ./install.sh
+git clone https://github.com/kumarabd/memory-superagents.git
+cd memory-superagents
+OPENAI_API_KEY=sk-... ./install.sh   # produces ./cli/memory
+claude plugin install "$(pwd)" --scope local
 ```
 
-To register the MCP server by hand (same as `install.sh` does), use the bootstrap script so the repo does not depend on global `uv`:
+MCP and hooks load from that tree; **`install.sh`** does **not** write user-scope MCP config under **`~/.claude`**.
 
-```bash
-claude mcp add memory -s user \
-  -e DATABASE_URL="postgres://postgres:postgres@localhost:5432/claude_memory" \
-  -e OPENAI_API_KEY="sk-..." \
-  -- /bin/bash /path/to/claude-memory/mcp-server/run-mcp-server.sh
-```
-
-The first successful start may take a short while while `pip` fills `mcp-server/.venv/`.
+If you still have a **duplicate** `memory` entry from an older **`install.sh`** (`claude mcp add -s user`), remove it once: **`claude mcp remove memory -s user`**, then rely on the plugin only.
 
 ### Verify
 

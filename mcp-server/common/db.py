@@ -326,3 +326,174 @@ async def project_memory_distribution(
         "last_event_at": agg["last_event_at"].isoformat() if agg and agg["last_event_at"] else None,
         "by_type": by_type,
     }
+
+
+# --- AgentLab notebook (structured JSON in agentlab_notebook) ---
+
+NOTEBOOK_KEYS = frozenset(
+    {
+        "term_cache",
+        "concept_mapping",
+        "preferences",
+        "hypotheses",
+        "experiments",
+        "findings",
+        "semantic_links",
+        "open_questions",
+        "artifacts",
+    }
+)
+
+
+def default_notebook_payload() -> dict[str, Any]:
+    return {
+        "term_cache": {},
+        "concept_mapping": {},
+        "preferences": {"row_cap": 100},
+        "hypotheses": [],
+        "experiments": [],
+        "findings": [],
+        "semantic_links": [],
+        "open_questions": [],
+        "artifacts": [],
+    }
+
+
+async def notebook_load(workspace_key: str) -> dict[str, Any]:
+    pool = _get_pool()
+    if not pool:
+        return {
+            "workspace_key": workspace_key,
+            "version": 0,
+            "updated_at": None,
+            "notebook": default_notebook_payload(),
+        }
+    try:
+        row = await pool.fetchrow(
+            """
+            SELECT payload, version, updated_at
+            FROM agentlab_notebook
+            WHERE workspace_key = $1
+            """,
+            workspace_key,
+        )
+        if row is None:
+            # Materialize default row on first touch so the table is visible in ops
+            # (notebook.patch also inserts; load alone used to leave zero rows).
+            await pool.execute(
+                """
+                INSERT INTO agentlab_notebook (workspace_key, payload, version, updated_at)
+                VALUES ($1, $2::jsonb, 1, now())
+                ON CONFLICT (workspace_key) DO NOTHING
+                """,
+                workspace_key,
+                json.dumps(default_notebook_payload()),
+            )
+            row = await pool.fetchrow(
+                """
+                SELECT payload, version, updated_at
+                FROM agentlab_notebook
+                WHERE workspace_key = $1
+                """,
+                workspace_key,
+            )
+        if row is None:
+            return {
+                "workspace_key": workspace_key,
+                "version": 0,
+                "updated_at": None,
+                "notebook": default_notebook_payload(),
+            }
+        payload = row["payload"]
+        if not isinstance(payload, dict):
+            payload = default_notebook_payload()
+        else:
+            merged = default_notebook_payload()
+            merged.update(payload)
+            payload = merged
+        return {
+            "workspace_key": workspace_key,
+            "version": int(row["version"]),
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+            "notebook": payload,
+        }
+    except Exception:
+        return {
+            "workspace_key": workspace_key,
+            "version": 0,
+            "updated_at": None,
+            "notebook": default_notebook_payload(),
+            "_proxy": {
+                "configured": bool(pool),
+                "error": "agentlab_notebook missing or DB error — run `memory migrate`",
+            },
+        }
+
+
+async def notebook_patch(
+    workspace_key: str,
+    patch: dict[str, Any],
+    expected_version: int | None,
+) -> dict[str, Any]:
+    pool = _get_pool()
+    bad_keys = [k for k in patch if k not in NOTEBOOK_KEYS]
+    if bad_keys:
+        raise ValueError(
+            f"notebook.patch: unknown keys {bad_keys!r}; allowed: {sorted(NOTEBOOK_KEYS)}"
+        )
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """
+                SELECT payload, version
+                FROM agentlab_notebook
+                WHERE workspace_key = $1
+                FOR UPDATE
+                """,
+                workspace_key,
+            )
+            if row is None:
+                if expected_version is not None and expected_version != 0:
+                    raise ValueError(
+                        f"notebook.patch: no row for workspace; expected_version "
+                        f"must be 0 or None, got {expected_version}"
+                    )
+                base = default_notebook_payload()
+                cur_v = 0
+            else:
+                cur_v = int(row["version"])
+                if expected_version is not None and cur_v != expected_version:
+                    raise ValueError(
+                        f"notebook.patch: version mismatch (current={cur_v}, "
+                        f"expected={expected_version})"
+                    )
+                raw = row["payload"]
+                base = default_notebook_payload()
+                if isinstance(raw, dict):
+                    base.update(raw)
+
+            for k in NOTEBOOK_KEYS:
+                if k in patch:
+                    base[k] = patch[k]
+
+            new_v = cur_v + 1
+            await conn.execute(
+                """
+                INSERT INTO agentlab_notebook (workspace_key, payload, version, updated_at)
+                VALUES ($1, $2::jsonb, $3, now())
+                ON CONFLICT (workspace_key) DO UPDATE
+                SET payload = EXCLUDED.payload,
+                    version = EXCLUDED.version,
+                    updated_at = now()
+                """,
+                workspace_key,
+                json.dumps(base),
+                new_v,
+            )
+
+    return {
+        "workspace_key": workspace_key,
+        "version": new_v,
+        "ok": True,
+    }

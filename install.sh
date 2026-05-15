@@ -17,8 +17,12 @@ step "Checking prerequisites..."
 command -v docker  >/dev/null 2>&1 || error "docker is required. See https://docs.docker.com/get-docker/"
 command -v python3 >/dev/null 2>&1 || error "Python 3.11+ is required: https://www.python.org/downloads/"
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null || error "Python 3.11 or newer is required (found older python3)."
-command -v go      >/dev/null 2>&1 || error "go is required: https://go.dev/dl/"
-command -v claude  >/dev/null 2>&1 || error "claude CLI is required. Install Claude Code first."
+command -v go >/dev/null 2>&1 || error "go is required: https://go.dev/dl/"
+if command -v claude >/dev/null 2>&1; then
+  info "claude CLI on PATH (optional — used for plugin/marketplace commands outside this script)."
+else
+  warn "claude CLI not on PATH — fine for Postgres + memory CLI; install Claude Code to enable the plugin."
+fi
 info "All prerequisites found."
 
 # --- Env vars ---
@@ -49,31 +53,28 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# --- MCP server ---
-step "Registering MCP server with Claude Code..."
-claude mcp remove memory -s user 2>/dev/null || true
-claude mcp add memory \
-  -s user \
-  -e DATABASE_URL="$DATABASE_URL" \
-  -e OPENAI_API_KEY="$OPENAI_API_KEY" \
-  -- /bin/bash \
-     "$SCRIPT_DIR/mcp-server/run-mcp-server.sh"
-info "MCP server registered."
+# --- MCP (plugin only) ---
+step "MCP registration..."
+info "Memory MCP is declared in this repo's .mcp.json — Claude Code loads it when the claude-memory plugin is enabled (no user-scope claude mcp add, no ~/.claude MCP edits)."
 
 # --- CLI ---
 step "Building memory CLI..."
 command -v go >/dev/null 2>&1 || error "go is required: https://go.dev/dl/"
-(cd "$SCRIPT_DIR/cli" && go build -o "$HOME/.local/bin/memory" .)
-info "memory CLI installed to ~/.local/bin/memory"
+mkdir -p "$HOME/.local/bin"
+(cd "$SCRIPT_DIR/cli" && go build -o "$SCRIPT_DIR/cli/memory" .)
+cp -f "$SCRIPT_DIR/cli/memory" "$HOME/.local/bin/memory"
+info "memory CLI installed to $SCRIPT_DIR/cli/memory (plugin hooks use this path) and ~/.local/bin/memory"
 
 # --- Done ---
 echo
 echo -e "${BOLD}Installation complete!${NC}"
 echo
 echo "  Next steps:"
-echo "    memory doctor        # verify everything is working"
-echo "    memory status        # operational status"
+echo "    Enable the claude-memory plugin in Claude Code (marketplace or local path) so .mcp.json wires the memory server."
+echo "    memory doctor          # verify Postgres, schema, embeddings"
+echo "    memory migrate         # apply SQL migrations (e.g. agentlab_notebook)"
+echo "    memory status          # operational status"
 echo
-warn "Add these to your shell profile (~/.zshrc or ~/.bashrc) to persist across sessions:"
+warn "Add these to your shell profile (~/.zshrc or ~/.bashrc) so the Claude app and hooks inherit them (GUI often does not read the terminal):"
 echo "  export DATABASE_URL=\"$DATABASE_URL\""
 echo "  export OPENAI_API_KEY=\"\$OPENAI_API_KEY\""

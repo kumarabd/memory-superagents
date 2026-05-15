@@ -1,8 +1,11 @@
 {
+  "$schema": "https://anthropic.ai/claude-code/marketplace.schema.json",
   "name": "claude-memory",
+  "description": "Claude Memory marketplace (PostgreSQL + pgvector, MCP, hooks).",
   "owner": {
     "name": "Abishek Kumar",
-    "email": "abishekkumar92@gmail.com"
+    "email": "abishekkumar92@gmail.com",
+    "url": "https://github.com/kumarabd"
   },
   "plugins": [
     {
@@ -10,6 +13,8 @@
       "description": "Persistent memory layer for Claude Code",
       "version": "0.1.0",
       "source": "./",
+      "homepage": "https://github.com/kumarabd/memory-superagents",
+      "repository": "https://github.com/kumarabd/memory-superagents.git",
       "author": {
         "name": "Abishek Kumar",
         "email": "abishekkumar92@gmail.com"

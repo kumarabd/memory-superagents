@@ -6,6 +6,7 @@ from fastmcp import FastMCP
 from common import db, embeddings
 from core.tools import register_core_tools
 from insights.tools import register_insights_tools
+from notebook.tools import register_notebook_tools
 
 
 def _check_env() -> None:
@@ -34,6 +35,7 @@ mcp = FastMCP("memory", lifespan=lifespan)
 
 register_core_tools(mcp)
 register_insights_tools(mcp)
+register_notebook_tools(mcp)
 
 if __name__ == "__main__":
     mcp.run()

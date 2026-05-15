@@ -131,12 +131,12 @@ func checkMCP() checkResult {
 	}
 	s := string(out)
 	if strings.Contains(s, "memory") && !strings.Contains(s, "✗") {
-		return checkResult{"MCP server", true, "registered and connected"}
+		return checkResult{"MCP server", true, "listed by claude mcp list (plugin or user scope)"}
 	}
 	if strings.Contains(s, "memory") {
-		return checkResult{"MCP server", false, "registered but not connected — check env vars"}
+		return checkResult{"MCP server", false, "listed but not connected — check DATABASE_URL / OPENAI_API_KEY for the MCP process"}
 	}
-	return checkResult{"MCP server", false, "not registered — run: ./install.sh"}
+	return checkResult{"MCP server", false, "not listed — enable the claude-memory plugin in Claude Code (MCP from .mcp.json). Avoid duplicate user-scope entries unless you mean to."}
 }
 
 func checkEmbeddings(ctx context.Context, apiKey string) checkResult {

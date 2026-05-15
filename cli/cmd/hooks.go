@@ -4,17 +4,70 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/google/uuid"
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/abishekkumar/claude-memory/cli/internal/db"
 	"github.com/urfave/cli/v2"
 )
+
+// defaultNotebookPayload matches mcp-server/common/db.py default_notebook_payload().
+func defaultNotebookPayload() map[string]any {
+	return map[string]any{
+		"term_cache":       map[string]any{},
+		"concept_mapping":  map[string]any{},
+		"preferences":      map[string]any{"row_cap": 100},
+		"hypotheses":       []any{},
+		"experiments":      []any{},
+		"findings":         []any{},
+		"semantic_links":   []any{},
+		"open_questions":   []any{},
+		"artifacts":        []any{},
+	}
+}
+
+// notebookTouchEnsure mirrors MCP notebook.load first-touch: insert default row if missing, then return version.
+func notebookTouchEnsure(ctx context.Context, pool *db.Pool, workspaceKey string) (version int64, err error) {
+	if strings.TrimSpace(workspaceKey) == "" {
+		return 0, fmt.Errorf("empty workspace_key")
+	}
+	payload, err := json.Marshal(defaultNotebookPayload())
+	if err != nil {
+		return 0, err
+	}
+	err = pool.QueryRow(ctx, `
+		SELECT version FROM agentlab_notebook WHERE workspace_key = $1
+	`, workspaceKey).Scan(&version)
+	if err == nil {
+		return version, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return 0, err
+	}
+	// Row missing — materialize default (same first-touch as MCP notebook.load).
+	_, execErr := pool.Exec(ctx, `
+		INSERT INTO agentlab_notebook (workspace_key, payload, version, updated_at)
+		VALUES ($1, $2::jsonb, 1, now())
+		ON CONFLICT (workspace_key) DO NOTHING
+	`, workspaceKey, payload)
+	if execErr != nil {
+		return 0, execErr
+	}
+	err = pool.QueryRow(ctx, `
+		SELECT version FROM agentlab_notebook WHERE workspace_key = $1
+	`, workspaceKey).Scan(&version)
+	if err != nil {
+		return 0, err
+	}
+	return version, nil
+}
 
 // HookInput is a partial schema of Claude Code hook stdin JSON.
 // We only rely on fields we need for deterministic session wiring.
@@ -43,7 +96,7 @@ func HooksCmd() *cli.Command {
 func HookSessionStartCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "session-start",
-		Usage: "Handle SessionStart hook input: persist session metadata and emit additionalContext JSON",
+		Usage: "Handle SessionStart hook input: CLAUDE_ENV_FILE exports, AgentLab notebook row (notebook.load materialize), additionalContext JSON",
 		Action: func(c *cli.Context) error {
 			in, err := readHookInput(os.Stdin)
 			if err != nil {
@@ -61,12 +114,17 @@ func HookSessionStartCmd() *cli.Command {
 				}
 			}
 
+			cwd := strings.TrimSpace(in.Cwd)
+			if cwd == "" {
+				cwd = strings.TrimSpace(os.Getenv("CLAUDE_PROJECT_DIR"))
+			}
+
 			// Persist environment variables for subsequent commands in this Claude session.
 			// CLAUDE_ENV_FILE is provided by Claude Code for SessionStart hooks.
 			if envFile := os.Getenv("CLAUDE_ENV_FILE"); envFile != "" {
 				if err := appendExports(envFile, map[string]string{
 					"CLAUDE_CODE_SESSION_ID":     sid,
-					"CLAUDE_CODE_SESSION_CWD":    strings.TrimSpace(in.Cwd),
+					"CLAUDE_CODE_SESSION_CWD":    cwd,
 					"CLAUDE_CODE_SESSION_SOURCE": strings.TrimSpace(in.Source),
 					"CLAUDE_CODE_MODEL":          strings.TrimSpace(in.Model),
 					"CLAUDE_CODE_AGENT_TYPE":     strings.TrimSpace(in.AgentType),
@@ -75,10 +133,25 @@ func HookSessionStartCmd() *cli.Command {
 				}
 			}
 
-			return printHookAdditionalContext(
-				"SessionStart",
-				"Claude Memory is enabled for this session. A Claude session id is available to tools via the CLAUDE_CODE_SESSION_ID environment variable.",
-			)
+			msg := "Claude Memory is enabled for this session. A Claude session id is available to tools via the CLAUDE_CODE_SESSION_ID environment variable."
+			if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" && cwd != "" {
+				nctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+				defer cancel()
+				pool, err := db.Connect(nctx, dbURL)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "memory hook session-start: notebook touch: connect: %v\n", err)
+				} else {
+					defer pool.Close()
+					ver, err := notebookTouchEnsure(nctx, pool, cwd)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "memory hook session-start: notebook touch (same as MCP notebook.load materialize): %v — run `memory migrate` if agentlab_notebook is missing\n", err)
+					} else {
+						msg += fmt.Sprintf(" AgentLab notebook row is ready for this workspace (version %d); MCP notebook.load will return the same row.", ver)
+					}
+				}
+			}
+
+			return printHookAdditionalContext("SessionStart", msg)
 		},
 	}
 }
