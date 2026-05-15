@@ -19,9 +19,9 @@ command -v python3 >/dev/null 2>&1 || error "Python 3.11+ is required: https://w
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null || error "Python 3.11 or newer is required (found older python3)."
 command -v go >/dev/null 2>&1 || error "go is required: https://go.dev/dl/"
 if command -v claude >/dev/null 2>&1; then
-  info "claude CLI on PATH (optional — used for plugin/marketplace commands outside this script)."
+  info "claude CLI on PATH — plugin will be registered with Claude Code."
 else
-  warn "claude CLI not on PATH — fine for Postgres + memory CLI; install Claude Code to enable the plugin."
+  warn "claude CLI not on PATH — Postgres + CLI will install; add Claude Code and re-run this script (or run the plugin commands from the README) to install the plugin."
 fi
 info "All prerequisites found."
 
@@ -53,11 +53,7 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# --- MCP (plugin only) ---
-step "MCP registration..."
-info "Memory MCP is declared in this repo's .mcp.json — Claude Code loads it when the claude-memory plugin is enabled (no user-scope claude mcp add, no ~/.claude MCP edits)."
-
-# --- CLI ---
+# --- CLI (build before local plugin install so ${CLAUDE_PLUGIN_ROOT}/cli/memory can exist) ---
 step "Building memory CLI..."
 command -v go >/dev/null 2>&1 || error "go is required: https://go.dev/dl/"
 mkdir -p "$HOME/.local/bin"
@@ -65,12 +61,38 @@ mkdir -p "$HOME/.local/bin"
 cp -f "$SCRIPT_DIR/cli/memory" "$HOME/.local/bin/memory"
 info "memory CLI installed to $SCRIPT_DIR/cli/memory (plugin hooks use this path) and ~/.local/bin/memory"
 
+# --- Claude Code plugin (MCP + hooks via .mcp.json) ---
+MEMORY_MARKETPLACE_URL="${MEMORY_MARKETPLACE_URL:-https://github.com/kumarabd/memory-superagents.git}"
+MEMORY_PLUGIN_SELECTOR="${MEMORY_PLUGIN_SELECTOR:-claude-memory@claude-memory}"
+
+step "Installing Claude Code plugin (claude-memory)..."
+if [[ "${MEMORY_SKIP_CLAUDE_PLUGIN:-}" == "1" ]]; then
+  warn "MEMORY_SKIP_CLAUDE_PLUGIN=1 — skipping claude plugin install."
+elif ! command -v claude >/dev/null 2>&1; then
+  warn "Skip plugin install (no claude on PATH). After installing Claude Code:"
+  warn "  claude plugin marketplace add $MEMORY_MARKETPLACE_URL"
+  warn "  claude plugin install $MEMORY_PLUGIN_SELECTOR --scope user"
+else
+  claude plugin marketplace add "$MEMORY_MARKETPLACE_URL" --scope user 2>/dev/null || true
+  info "Marketplace source: $MEMORY_MARKETPLACE_URL (re-add is harmless if already registered)."
+  if claude plugin install "$MEMORY_PLUGIN_SELECTOR" --scope user; then
+    info "Plugin installed: $MEMORY_PLUGIN_SELECTOR (MCP + hooks from .mcp.json; no claude mcp add)."
+  else
+    warn "Marketplace install failed — installing from this directory instead..."
+    if claude plugin install "$SCRIPT_DIR" --scope user; then
+      info "Plugin installed from checkout: $SCRIPT_DIR"
+    else
+      warn "Plugin install failed. Install manually (README: Getting Started)."
+    fi
+  fi
+fi
+
 # --- Done ---
 echo
 echo -e "${BOLD}Installation complete!${NC}"
 echo
 echo "  Next steps:"
-echo "    Enable the claude-memory plugin in Claude Code (marketplace or local path) so .mcp.json wires the memory server."
+echo "    Restart Claude Code (or /reload-plugins) so the claude-memory plugin picks up MCP + hooks from .mcp.json."
 echo "    memory doctor          # verify Postgres, schema, embeddings"
 echo "    memory migrate         # apply SQL migrations (e.g. agentlab_notebook)"
 echo "    memory status          # operational status"

@@ -8,7 +8,7 @@ A persistent memory layer for Claude Code. Gives Claude the ability to remember 
 
 The MCP server exposes **core** tools (`memory.*`) for capture and retrieval plus **insights** tools (`insights.*`) for aggregates and derived rows stored with lineage. Claude writes and retrieves typed memory events primarily via core tools. Every memory has a type, scope, importance, confidence, and optional project tag. Semantic search is powered by OpenAI embeddings (`text-embedding-ada-002`) stored in a `vector(1536)` column.
 
-**Recommended setup:** install **claude-memory** as a Claude Code plugin (this repo: `.claude-plugin/` + `hooks/` + `skills/` + **`.mcp.json`** for MCP). Then run **`./install.sh`** once from the plugin root: it starts Postgres and builds **`cli/memory`** (hooks use **`${CLAUDE_PLUGIN_ROOT}/hooks/memory-hook.sh`**, which prefers **`cli/memory`**). It does **not** run **`claude mcp add`** or edit user MCP config under **`~/.claude`**. Persist **`DATABASE_URL`** in your shell so SessionStart hooks and the MCP process match.
+**Recommended setup:** clone [memory-superagents](https://github.com/kumarabd/memory-superagents) and run **`./install.sh`**: it starts Postgres, builds **`cli/memory`**, and (when **`claude`** is on **`PATH`**) registers the GitHub marketplace and runs **`claude plugin install claude-memory@claude-memory --scope user`** so MCP + hooks load from **`.mcp.json`** (no **`claude mcp add`**). Set **`MEMORY_SKIP_CLAUDE_PLUGIN=1`** to skip plugin commands (e.g. CI). Override defaults with **`MEMORY_MARKETPLACE_URL`** and **`MEMORY_PLUGIN_SELECTOR`**. Persist **`DATABASE_URL`** in your shell so SessionStart hooks and the MCP process match.
 
 At the start of each Claude Code session the **SessionStart** hook runs **`memory hook session-start`** (via the wrapper above), which (1) exports session metadata into `CLAUDE_ENV_FILE` when present, and (2) when **`DATABASE_URL`** is set, performs the same **first-touch materialization** as MCP **`notebook.load`** for the session workspace path (`cwd` from the hook payload, or **`CLAUDE_PROJECT_DIR`** if `cwd` is empty): ensures a row exists in **`agentlab_notebook`** so `SELECT * FROM agentlab_notebook` and subsequent **`notebook.load`** calls see that workspace without waiting for an agent tool call.
 
@@ -124,19 +124,23 @@ memory reindex      # re-embed after model change
 
 The MCP server installs its own dependencies into `mcp-server/.venv/` the first time it starts (`run-mcp-server.sh`). Developers may still use [uv](https://docs.astral.sh/uv/) with `uv run server.py` if they prefer.
 
-### 1 — Install the plugin from GitHub (recommended)
+### 1 — Install from GitHub (script or manual)
 
-Register the marketplace from the public repo, then install the **`claude-memory`** plugin (MCP via **`.mcp.json`**, hooks, skills). See [Claude Code plugins](https://code.claude.com/docs/en/discover-plugins).
+**Single command (recommended):** clone the repo and run **`./install.sh`**. With **`claude`** on your **`PATH`**, the script registers **`https://github.com/kumarabd/memory-superagents.git`** as a marketplace and installs **`claude-memory@claude-memory`** (user scope). It also starts Postgres and builds the **`memory`** CLI. Skip plugin steps with **`MEMORY_SKIP_CLAUDE_PLUGIN=1`**.
 
-**In Claude Code** (slash commands):
+```bash
+git clone https://github.com/kumarabd/memory-superagents.git
+cd memory-superagents
+OPENAI_API_KEY=sk-... ./install.sh
+```
+
+**Manual (same as the script):** in Claude Code or the terminal:
 
 ```text
 /plugin marketplace add https://github.com/kumarabd/memory-superagents.git
 /plugin install claude-memory@claude-memory
 /reload-plugins
 ```
-
-**From a terminal** ([plugins CLI](https://code.claude.com/docs/en/plugins-reference)):
 
 ```bash
 claude plugin marketplace add https://github.com/kumarabd/memory-superagents.git
@@ -145,32 +149,17 @@ claude plugin install claude-memory@claude-memory --scope user
 
 The marketplace **`name`** in [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) is **`claude-memory`**; the plugin id is **`claude-memory`**, so the install selector is **`claude-memory@claude-memory`**.
 
-### 2 — Data plane: Postgres + `memory` CLI
+### 2 — If you skipped the script’s plugin step
 
-**`install.sh`** is not run by the plugin installer. Clone the same repo on disk (for **`docker-compose.yml`**, migrations, and **`go build`**) and run the script once:
+If **`claude`** was missing during **`./install.sh`**, run the marketplace + install commands above after installing Claude Code, **or** re-run **`./install.sh`** from the clone.
 
-```bash
-git clone https://github.com/kumarabd/memory-superagents.git
-cd memory-superagents
-OPENAI_API_KEY=sk-... ./install.sh
-```
+### 3 — Data plane only (already covered by `./install.sh`)
 
-That starts Postgres, builds **`cli/memory`** under the clone (and copies it to **`~/.local/bin/memory`**). When the plugin is loaded from Claude’s cache, **`hooks/memory-hook.sh`** still finds the CLI via **`PATH`** if the cache tree does not yet contain **`cli/memory`**.
+The script runs **`docker compose`**, builds **`cli/memory`** under the clone, and copies it to **`~/.local/bin/memory`**. When the plugin is loaded from Claude’s cache, **`hooks/memory-hook.sh`** falls back to **`PATH`** if the cache tree has no **`cli/memory`** yet — keep **`~/.local/bin`** on **`PATH`**.
 
-Ensure **`~/.local/bin`** is on your **`PATH`** for terminal use of **`memory`**.
+### Alternative — Local scope or forks
 
-### Alternative — Local plugin from a clone
-
-If you want **`${CLAUDE_PLUGIN_ROOT}/cli/memory`** to be the binary the hooks use (no reliance on **`PATH`**), install the plugin from the clone directory instead of only from GitHub cache:
-
-```bash
-git clone https://github.com/kumarabd/memory-superagents.git
-cd memory-superagents
-OPENAI_API_KEY=sk-... ./install.sh   # produces ./cli/memory
-claude plugin install "$(pwd)" --scope local
-```
-
-MCP and hooks load from that tree; **`install.sh`** does **not** write user-scope MCP config under **`~/.claude`**.
+**`./install.sh`** falls back to **`claude plugin install "$SCRIPT_DIR" --scope user`** if **`claude-memory@claude-memory`** fails (e.g. offline or fork). For **project**/**`local`** scope only, run **`claude plugin install "$(pwd)" --scope local`** yourself after **`./install.sh`**.
 
 If you still have a **duplicate** `memory` entry from an older **`install.sh`** (`claude mcp add -s user`), remove it once: **`claude mcp remove memory -s user`**, then rely on the plugin only.
 
@@ -199,6 +188,9 @@ memory export --format timeline
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string, e.g. `postgres://user:pass@host:5432/dbname` |
 | `OPENAI_API_KEY` | OpenAI API key — used for generating embeddings via `text-embedding-ada-002` |
+| `MEMORY_SKIP_CLAUDE_PLUGIN` | Set to `1` to skip `claude plugin marketplace add` / `install` inside `./install.sh` |
+| `MEMORY_MARKETPLACE_URL` | Override default `https://github.com/kumarabd/memory-superagents.git` |
+| `MEMORY_PLUGIN_SELECTOR` | Override default `claude-memory@claude-memory` |
 
 ---
 

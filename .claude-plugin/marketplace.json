@@ -11,7 +11,7 @@
     {
       "name": "claude-memory",
       "description": "Persistent memory layer for Claude Code",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "source": "./",
       "homepage": "https://github.com/kumarabd/memory-superagents",
       "repository": "https://github.com/kumarabd/memory-superagents.git",

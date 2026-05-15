@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "claude-memory",
-  "description": "Persistent memory layer for Claude Code — PostgreSQL + pgvector; MCP tools, SessionStart/End hooks (notebook materialize), and memory-manager skill. Install as a plugin and run ./install.sh once for cli/memory + MCP.",
-  "version": "0.1.0",
+  "description": "Persistent memory layer for Claude Code — PostgreSQL + pgvector; MCP tools, SessionStart/End hooks (notebook materialize), and memory-manager skill. Run ./install.sh for Postgres + CLI + claude plugin install (see README).",
+  "version": "0.1.1",
   "author": {
     "name": "Abishek Kumar",
     "email": "abishekkumar92@gmail.com"
